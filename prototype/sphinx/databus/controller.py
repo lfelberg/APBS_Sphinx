@@ -38,6 +38,8 @@
 # THE POSSIBILITY OF SUCH DAMAGE.
 #}}}
 
+from .types import *
+
 import logging
 
 __all__ = ['SDBController']
@@ -54,6 +56,18 @@ class SDBController:
 	def __init__(self):
 		self._source_types = {}
 		self._sink_types = {}
+		self._store = new_datastore()
+
+
+	def validate_type(self, type):
+		try:
+			schema = self._store['types'][type['type']]
+			validate(schema, type['value'])
+
+		except KeyError:
+			msg = 'Unknown type: {}'.format(type['type'])
+			_log.error(msg)
+			raise SphinxTypeError(msg)
 
 
 	def add_plugin(self, plugin):
@@ -70,11 +84,13 @@ class SDBController:
 			 'and sinks {}.'.format(plugin.sinks()))
 		plugin.set_databus(self)
 
-		for source in plugin.sources():
-			self._get_plugin_list(source, self._source_types).append(plugin)
+		# for source in plugin.sources():
+			# self._get_plugin_list(source, self._source_types).append(plugin)
 
-		for sink in plugin.sinks():
-			self._get_plugin_list(sink, self._sink_types).append(plugin)
+		for type in plugin.sinks():
+			self.validate_type(type)
+			self._store['plugins'][type['type']] = type['value']
+			# self._get_plugin_list(sink, self._sink_types).append(plugin)
 
 
 	def sources_for(self, type):
@@ -95,10 +111,10 @@ class SDBController:
 		keys where deeper levels are more specific instances of a type.
 		A type can increase specificity by using slashes.
 		'''
-		# TODO: We need more than just 'Type' to justify a dict.  It's also
+		# TODO: We need more than just 'type' to justify a dict.  It's also
 		# keeping us from doing something like:
-		# 	{'Type': ['atom/elec', 'atom/apolar', 'text'] }
-		type = key['Type'].split('/')
+		# 	{'type': ['atom/elec', 'atom/apolar', 'text'] }
+		type = key['type'].split('/')
 		first = type.pop(0)
 		try:
 			handlers = dict[first]

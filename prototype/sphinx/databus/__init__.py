@@ -39,3 +39,4 @@
 #}}}
 
 from .controller import *
+from .types import SphinxTypeError

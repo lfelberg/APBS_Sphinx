@@ -39,11 +39,49 @@
 #}}}
 
 import simplejson as json
-from jsl import Document, DocumentField, NumberField, DictField, ArrayField
-from jsonschema import validate
-import msgpack
+from jsl import Document, DocumentField, NumberField, DictField, ArrayField, StringField
+import jsonschema
 
 import logging
+
+__all__ = ['new_datastore', 'validate', 'SphinxTypeError']
+
+__author__ = 'Keith T. Star <keith@pnnl.gov>'
+
+_log = logging.getLogger()
+
+def new_datastore():
+	src = {'types': {
+				'file': File.get_schema(),
+				'file_extension': FileExt.get_schema(),
+				'position': Position.get_schema(),
+				'charge': Charge.get_schema(),
+				'atom': Atom.get_schema(),
+				'molecule': Molecule.get_schema()},
+			'data': {},
+			'plugins': {}
+			}
+	validate(DataStore.get_schema(), src)
+	return src
+
+class FileExt(Document):
+	class Options():
+		title = "File Extension"
+		description = "Just a file extension."
+
+	ext = StringField(description="The file extension, including the dot ('.').",
+			required=True, pattern="\..*")
+
+class File(Document):
+	class Options():
+		title = "File"
+		description = "A file, with associated meta-data; path, extension, etc."
+
+	base_name = StringField(description="File name, without extension",
+			required=True)
+	path = StringField(description="Full path, including file name (with extension)",
+			required=True)
+	file_ext = DocumentField(FileExt)
 
 class Position(Document):
 	class Options():
@@ -61,12 +99,14 @@ class Charge(Document):
 
 	charge = NumberField(required=True)
 
-class Atom(Position, Charge):
+class Atom(Document):
 	class Options():
 		title = "An atom"
 		description = "Properties of an atom."
 
+	position = DocumentField(Position)
 	radius = NumberField(required=True, minimum=0.0, exclusive_minimum=True)
+	charge = DocumentField(Charge)
 
 class Molecule(Document):
 	class Options():
@@ -75,40 +115,31 @@ class Molecule(Document):
 
 	atoms = ArrayField(description="Atom list", items=Atom)
 
-class DataBus(Document):
+class DataStore(Document):
 	class Options():
-		title = "APBS Data Bus"
+		title = "APBS Data Store"
 		description = "Used to store types for plugins, as well as plugin output."
 
-	types = DictField(description="These are the base types that may be instantiated.")
-	data = DictField(description="These are runs of a pipeline, indexed by a UUID.")
+	plugins = DictField(description="Registered plugins.",
+		required=True)
+	types = DictField(description="These are the base types that may be instantiated.",
+		required=True)
+	data = DictField(description="These are runs of a pipeline, indexed by a UUID.",
+		required=True)
 
-print(json.dumps(DataBus.get_schema(), indent=4 * ' '))
 
-# foo = {"position":
-# 		{"x": 0.0, "y": -10.0, "z": 10.0},
-# 		"radius": 0.00001,
-# 		"charge": {'q': 1.0}}
-foo = {'x': 0.0, 'y': -10.0, 'z': 10.0,
-		'radius': 0.00001,
-		'charge': 1.0}
-validate(foo, Atom.get_schema())
-mol = {'atoms': [foo]}
-validate(mol, Molecule.get_schema())
+def validate(schema, instance):
+	try:
+		jsonschema.validate(instance, schema)
 
-json_str = json.dumps(foo, indent=4 * ' ')
-print(json_str)
-packed = msgpack.packb(foo, use_bin_type=True)
-print(len(packed), packed)
-print(msgpack.unpackb(packed))
-print("packed by {}%.".format(len(packed)/len(json_str)*100))
+	except jsonschema.exceptions.ValidationError as e:
+		_log.error(e)
+		raise SphinxTypeError(e)
 
-orig = msgpack.unpackb(packed, encoding='utf-8')
-print(type(orig))
-print(orig['charge'])
 
-bar = {'types': {'position': Position.get_schema(), 'charge': Charge.get_schema(),
-		'atom': Atom.get_schema(), 'molecule': Molecule.get_schema()}}
-bar['data'] = {'foo': mol}
-print(json.dumps(bar, indent=4 * ' '))
-validate(bar, DataBus.get_schema())
+class SphinxTypeError(Exception):
+	def __init__(self, value):
+		self.value = value
+
+	def __str__(self):
+		return repr(self.value)

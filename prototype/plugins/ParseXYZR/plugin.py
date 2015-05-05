@@ -66,14 +66,12 @@ class ParseXYZR(BasePlugin):
 
 	@classmethod
 	def sinks(cls):
-		return [{'Type': 'file/.in'}]
+		return [{'type': 'file_extension', 'value': {'ext': '.in'}}]
 
 
 	@classmethod
 	def sources(cls):
-		return [
-			{'Type': 'plug-in/runner', }
-		]
+		return [{'type': 'atom'}]
 
 
 	@asyncio.coroutine
